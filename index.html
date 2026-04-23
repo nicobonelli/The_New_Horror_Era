@@ -1064,9 +1064,22 @@ const baseMovies = MOVIES
   .filter((m, i) => !deletedIndices.has(i));
 
 const ALL_MOVIES = [...baseMovies, ...userMovies];
+
+// Stamp each movie with its position so "newest added" can sort correctly.
+ALL_MOVIES.forEach((m, i) => { m._addedOrder = i; });
+// User-added movies float to the top of "newest added"
+userMovies.forEach((m, i) => { m._addedOrder = baseMovies.length + i; });
+
+// Parse rating strings like "7,5/10", "8.4/10 IMDb" → float
+function parseRating(r) {
+  if (!r || r === 'nan') return -1;
+  const m = String(r).replace(',', '.').match(/[\d.]+/);
+  return m ? parseFloat(m[0]) : -1;
+}
+
 let filtered = [...ALL_MOVIES];
 
-function updateStats() {
+  function updateStats() {
   document.getElementById('total-count').textContent = ALL_MOVIES.length;
   document.getElementById('seen-count').textContent = ALL_MOVIES.filter(m => m.seen).length;
 }
