@@ -842,11 +842,13 @@
     <option value="unseen">UNWATCHED</option>
   </select>
   <select id="sort-by">
-    <option value="default">SORT: DEFAULT</option>
+    <option value="newest-added">SORT: NEWEST ADDED</option>
     <option value="year-asc">YEAR: OLDEST</option>
     <option value="year-desc">YEAR: NEWEST</option>
     <option value="name">NAME: A–Z</option>
-  </select>
+    <option value="rating-desc">RATING: HIGHEST</option>
+    <option value="rating-asc">RATING: LOWEST</option>
+</select>
   <span class="results-count" id="result-count">990 RESULTS</span>
   <button class="add-btn" onclick="openModal()">&#xFF0B; ADD MOVIE</button>
 </div>
@@ -1120,6 +1122,7 @@ function submitMovie() {
     trailer: document.getElementById('f-trailer').value.trim(),
     _userAdded: true
   };
+  movie._addedOrder = ALL_MOVIES.length; // highest order = newest
   userMovies.push(movie);
   ALL_MOVIES.push(movie);
   try { localStorage.setItem('thenhorrorera_added', JSON.stringify(userMovies)); } catch(e) {}
@@ -1155,8 +1158,11 @@ function applyFilters() {
   });
 
   if (sort === 'year-asc') filtered.sort((a,b) => (parseInt(a.year)||9999) - (parseInt(b.year)||9999));
-  else if (sort === 'year-desc') filtered.sort((a,b) => (parseInt(b.year)||0) - (parseInt(a.year)||0));
-  else if (sort === 'name') filtered.sort((a,b) => a.name.localeCompare(b.name));
+else if (sort === 'year-desc') filtered.sort((a,b) => (parseInt(b.year)||0) - (parseInt(a.year)||0));
+else if (sort === 'name') filtered.sort((a,b) => a.name.localeCompare(b.name));
+else if (sort === 'rating-desc') filtered.sort((a,b) => parseRating(b.rating) - parseRating(a.rating));
+else if (sort === 'rating-asc') filtered.sort((a,b) => parseRating(a.rating) - parseRating(b.rating));
+else if (sort === 'newest-added') filtered.sort((a,b) => b._addedOrder - a._addedOrder);
 
   renderGrid();
 }
