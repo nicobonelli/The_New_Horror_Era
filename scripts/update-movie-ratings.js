@@ -25,12 +25,22 @@ function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
  
+// Thrown when OMDb's free-tier daily cap (1,000 requests/day) is hit, so the
+// caller can stop the whole run instead of silently mislabeling every
+// remaining title as "not found".
+class QuotaError extends Error {}
+ 
 async function lookupOmdb(title, year) {
   const params = new URLSearchParams({ t: title, apikey: API_KEY });
   if (year) params.set('y', year);
   const res = await fetch(`https://www.omdbapi.com/?${params.toString()}`);
   const data = await res.json();
-  if (data.Response === 'False') return null;
+  if (data.Response === 'False') {
+    if (data.Error && /request limit reached/i.test(data.Error)) {
+      throw new QuotaError('OMDb daily request limit reached');
+    }
+    return null;
+  }
   if (!data.imdbRating || data.imdbRating === 'N/A') return null;
   return data.imdbRating;
 }
@@ -50,6 +60,20 @@ async function fetchImdbRating(title, year) {
   return null;
 }
  
+// Simple in-place shuffle (Fisher-Yates). We iterate a shuffled COPY of the
+// references (the underlying movie objects are the same, so edits still land
+// in the original array/order) so that if the daily quota runs out partway
+// through, it's not always the same titles near the end of your list that
+// get starved every single run — the "unlucky" leftovers rotate week to week.
+function shuffled(arr) {
+  const copy = arr.slice();
+  for (let i = copy.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy;
+}
+ 
 async function main() {
   let html = fs.readFileSync(FILE, 'utf-8');
  
@@ -60,9 +84,9 @@ async function main() {
   }
   const movies = JSON.parse(match[1]);
  
-  let checked = 0, updated = 0, skipped = 0;
+  let checked = 0, updated = 0, skipped = 0, quotaHit = false;
  
-  for (const movie of movies) {
+  for (const movie of shuffled(movies)) {
     // Only touch titles that already use (or lack) an IMDb-style rating —
     // this leaves anything you've set manually to something else alone.
     const current = (movie.rating || '').trim();
@@ -83,12 +107,17 @@ async function main() {
         console.log(`${movie.name} (${movie.year || '?'}): no IMDb rating found on OMDb, left as-is`);
       }
     } catch (e) {
+      if (e instanceof QuotaError) {
+        console.log(`\nHit OMDb's free daily request limit after checking ${checked} title(s) — stopping here for today. The rest will get picked up on a future run.`);
+        quotaHit = true;
+        break;
+      }
       console.log(`${movie.name}: lookup failed (${e.message}), left as-is`);
     }
     await sleep(DELAY_MS);
   }
  
-  console.log(`\nChecked ${checked} title(s), updated ${updated}, skipped ${skipped} (non-IMDb ratings).`);
+  console.log(`\nChecked ${checked} title(s), updated ${updated}, skipped ${skipped} (non-IMDb ratings).${quotaHit ? ' (stopped early — daily OMDb limit reached)' : ''}`);
  
   if (updated > 0) {
     html = html.replace(/const MOVIES = \[[\s\S]*?\];/, `const MOVIES = ${JSON.stringify(movies)};`);
