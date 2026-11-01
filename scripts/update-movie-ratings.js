@@ -25,7 +25,7 @@ function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
  
-async function fetchImdbRating(title, year) {
+async function lookupOmdb(title, year) {
   const params = new URLSearchParams({ t: title, apikey: API_KEY });
   if (year) params.set('y', year);
   const res = await fetch(`https://www.omdbapi.com/?${params.toString()}`);
@@ -33,6 +33,21 @@ async function fetchImdbRating(title, year) {
   if (data.Response === 'False') return null;
   if (!data.imdbRating || data.imdbRating === 'N/A') return null;
   return data.imdbRating;
+}
+ 
+// OMDb's title+year match is strict — if the year on file for a movie
+// (festival year vs. wide-release year, a typo, etc.) doesn't exactly match
+// what OMDb has stored, the lookup fails as "not found" even though the
+// movie is really on there. So if a year was given and the lookup fails,
+// retry once with just the title before giving up.
+async function fetchImdbRating(title, year) {
+  const withYear = await lookupOmdb(title, year);
+  if (withYear) return withYear;
+  if (year) {
+    await sleep(DELAY_MS);
+    return await lookupOmdb(title, null);
+  }
+  return null;
 }
  
 async function main() {
