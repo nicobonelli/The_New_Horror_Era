@@ -1,6 +1,7 @@
-// Pulls fresh IMDb ratings from the free OMDb API (omdbapi.com) for every
-// movie in MOVIES that currently uses an IMDb-style rating (or has none
-// yet), and rewrites index.html in place. Run automatically by the
+// Pulls fresh IMDb ratings (and each movie's real IMDb ID, so the site can
+// link straight to its IMDb page) from the free OMDb API (omdbapi.com) for
+// every movie in MOVIES that currently uses an IMDb-style rating (or has
+// none yet), and rewrites index.html in place. Run automatically by the
 // "Update IMDb Ratings" GitHub Action — you shouldn't need to run this
 // by hand, but `node scripts/update-movie-ratings.js` works locally too
 // if you set an OMDB_API_KEY environment variable first.
@@ -30,6 +31,10 @@ function sleep(ms) {
 // remaining title as "not found".
 class QuotaError extends Error {}
  
+// Resolves to { rating, imdbId } (imdbId is OMDb's "tt1234567"-style IMDb
+// ID — capturing it lets the site link the IMDb logo straight to the
+// movie's real IMDb page instead of just a search) or null if OMDb has no
+// match / no rating.
 async function lookupOmdb(title, year) {
   const params = new URLSearchParams({ t: title, apikey: API_KEY });
   if (year) params.set('y', year);
@@ -42,7 +47,7 @@ async function lookupOmdb(title, year) {
     return null;
   }
   if (!data.imdbRating || data.imdbRating === 'N/A') return null;
-  return data.imdbRating;
+  return { rating: data.imdbRating, imdbId: data.imdbID || null };
 }
  
 // OMDb's title+year match is strict — if the year on file for a movie
@@ -50,7 +55,7 @@ async function lookupOmdb(title, year) {
 // what OMDb has stored, the lookup fails as "not found" even though the
 // movie is really on there. So if a year was given and the lookup fails,
 // retry once with just the title before giving up.
-async function fetchImdbRating(title, year) {
+async function fetchImdbInfo(title, year) {
   const withYear = await lookupOmdb(title, year);
   if (withYear) return withYear;
   if (year) {
@@ -95,14 +100,20 @@ async function main() {
  
     checked++;
     try {
-      const rating = await fetchImdbRating(movie.name, movie.year);
-      if (rating) {
-        const newValue = `${rating} IMDb`;
+      const info = await fetchImdbInfo(movie.name, movie.year);
+      if (info) {
+        let changed = false;
+        const newValue = `${info.rating} IMDb`;
         if (current !== newValue) {
           console.log(`${movie.name} (${movie.year || '?'}): "${current || '—'}" -> "${newValue}"`);
           movie.rating = newValue;
-          updated++;
+          changed = true;
         }
+        if (info.imdbId && movie.imdbId !== info.imdbId) {
+          movie.imdbId = info.imdbId;
+          changed = true;
+        }
+        if (changed) updated++;
       } else {
         console.log(`${movie.name} (${movie.year || '?'}): no IMDb rating found on OMDb, left as-is`);
       }
