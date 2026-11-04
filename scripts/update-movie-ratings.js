@@ -31,8 +31,8 @@ function sleep(ms) {
 // remaining title as "not found".
 class QuotaError extends Error {}
  
-// Resolves to { rating, imdbId } (imdbId is OMDb's "tt1234567"-style IMDb
-// ID — capturing it lets the site link the IMDb logo straight to the
+// Resolves to { rating, imdbId, year } (imdbId is OMDb's "tt1234567"-style
+// IMDb ID — capturing it lets the site link the IMDb logo straight to the
 // movie's real IMDb page instead of just a search) or null if OMDb has no
 // match / no rating.
 async function lookupOmdb(title, year) {
@@ -47,7 +47,7 @@ async function lookupOmdb(title, year) {
     return null;
   }
   if (!data.imdbRating || data.imdbRating === 'N/A') return null;
-  return { rating: data.imdbRating, imdbId: data.imdbID || null };
+  return { rating: data.imdbRating, imdbId: data.imdbID || null, year: data.Year || null };
 }
  
 // OMDb's title+year match is strict — if the year on file for a movie
@@ -55,12 +55,28 @@ async function lookupOmdb(title, year) {
 // what OMDb has stored, the lookup fails as "not found" even though the
 // movie is really on there. So if a year was given and the lookup fails,
 // retry once with just the title before giving up.
+//
+// That retry is risky for a common title (e.g. "Buddy") that a brand-new
+// indie/fan movie happens to share with a much older, more famous film of
+// the same name: dropping the year lets OMDb match literally any movie
+// called that, not necessarily yours. So if the fallback's year is way off
+// from what we expected, treat it as "not actually a match" rather than
+// quietly attaching some other movie's rating and IMDb page to this one.
+const YEAR_TOLERANCE = 2;
 async function fetchImdbInfo(title, year) {
   const withYear = await lookupOmdb(title, year);
   if (withYear) return withYear;
   if (year) {
     await sleep(DELAY_MS);
-    return await lookupOmdb(title, null);
+    const fallback = await lookupOmdb(title, null);
+    if (!fallback) return null;
+    const expected = parseInt(year, 10);
+    const got = parseInt(fallback.year, 10);
+    if (!isNaN(expected) && !isNaN(got) && Math.abs(got - expected) > YEAR_TOLERANCE) {
+      console.log(`  (skipping fallback match for "${title}" — OMDb matched a ${fallback.year} title, too far from the ${year} on file; likely a different movie with the same name)`);
+      return null;
+    }
+    return fallback;
   }
   return null;
 }
