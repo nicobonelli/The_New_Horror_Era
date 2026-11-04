@@ -1,0 +1,34 @@
+name: Audit IMDb Links
+ 
+# Manual-only — run this from the Actions tab whenever you want to check for
+# (and clean up) movies whose saved IMDb link might have accidentally
+# matched a different, same-named movie from an older version of the
+# rating-update script. No schedule; trigger it yourself as needed.
+on:
+  workflow_dispatch: {}
+ 
+permissions:
+  contents: write
+ 
+jobs:
+  audit-imdb-ids:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+ 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+ 
+      - name: Verify saved IMDb links
+        env:
+          OMDB_API_KEY: ${{ secrets.OMDB_API_KEY }}
+        run: node scripts/audit-imdb-ids.js
+ 
+      - name: Commit changes
+        run: |
+          git config user.name "fearcount-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add index.html
+          git diff --cached --quiet || git commit -m "Clear mismatched IMDb links"
+          git push
