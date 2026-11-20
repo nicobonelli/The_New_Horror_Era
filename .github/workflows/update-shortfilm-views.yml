@@ -1,0 +1,34 @@
+name: Update Short Film Views
+
+on:
+  schedule:
+    # Every Monday at 07:00 UTC — an hour after "Update IMDb Ratings", just
+    # so they don't both commit to index.html at the exact same moment.
+    - cron: '0 7 * * 1'
+  workflow_dispatch: {}   # lets you trigger it manually from the Actions tab
+
+permissions:
+  contents: write
+
+jobs:
+  update-views:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Fetch fresh YouTube view counts
+        env:
+          YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+        run: node scripts/update-shortfilm-views.js
+
+      - name: Commit changes
+        run: |
+          git config user.name "fearcount-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add index.html
+          git diff --cached --quiet || git commit -m "Auto-update short film view counts"
+          git push
